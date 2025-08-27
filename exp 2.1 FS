@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Live Character Counter for Textarea</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    .counter-box {
+      border: 1px solid #000;
+      padding: 15px;
+      margin-bottom: 20px;
+      width: 500px;
+    }
+    h2 {
+      margin: 0 0 10px;
+    }
+    textarea {
+      width: 100%;
+      height: 100px;
+      padding: 10px;
+      font-size: 14px;
+    }
+    .count {
+      margin-top: 10px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="counter-box">
+    <h2>Live Character Counter</h2>
+    <textarea id="textInput" placeholder="Start typing..."></textarea>
+    <div class="count" id="charCount">Characters: 0</div>
+  </div>
+
+  <!-- External JavaScript -->
+  <script src="script.js"></script>
+</body>
+</html>
