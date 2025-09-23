@@ -1,0 +1,25 @@
+import React from "react";
+
+const ProductCard = ({ name, price, inStock }) => {
+  return (
+    <div className="max-w-xs p-4 m-4 bg-white shadow-lg rounded-2xl border text-center">
+      <h2 className="text-xl font-bold mb-2">{name}</h2>
+      <p className="text-lg mb-1">Price: ${price}</p>
+      <p className={`font-medium ${inStock ? "text-green-600" : "text-red-600"}`}>
+        {inStock ? "In Stock" : "Out of Stock"}
+      </p>
+    </div>
+  );
+};
+
+const App = () => {
+  return (
+    <div className="flex flex-wrap justify-center">
+      <ProductCard name="Wireless Mouse" price={499} inStock={true} />
+      <ProductCard name="Mechanical Keyboard" price={2999} inStock={false} />
+      <ProductCard name="Gaming Headset" price={1999} inStock={true} />
+    </div>
+  );
+};
+
+export default App;
