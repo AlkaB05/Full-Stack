@@ -1,0 +1,105 @@
+import React, { useState } from "react";
+
+const LibraryManagement = () => {
+  const [books, setBooks] = useState([
+    { id: 1, title: "The Great Gatsby", author: "F. Scott Fitzgerald" },
+    { id: 2, title: "1984", author: "George Orwell" },
+    { id: 3, title: "To Kill a Mockingbird", author: "Harper Lee" }
+  ]);
+
+  const [search, setSearch] = useState("");
+  const [newTitle, setNewTitle] = useState("");
+  const [newAuthor, setNewAuthor] = useState("");
+
+  // Filter books dynamically based on search query
+  const filteredBooks = books.filter(
+    (book) =>
+      book.title.toLowerCase().includes(search.toLowerCase()) ||
+      book.author.toLowerCase().includes(search.toLowerCase())
+  );
+
+  // Add a new book
+  const addBook = (e) => {
+    e.preventDefault();
+    if (!newTitle.trim() || !newAuthor.trim()) return;
+    const newBook = {
+      id: Date.now(),
+      title: newTitle,
+      author: newAuthor,
+    };
+    setBooks([...books, newBook]);
+    setNewTitle("");
+    setNewAuthor("");
+  };
+
+  // Remove a book
+  const removeBook = (id) => {
+    setBooks(books.filter((book) => book.id !== id));
+  };
+
+  return (
+    <div className="max-w-lg mx-auto p-6 bg-gray-50 shadow-md rounded-2xl">
+      <h1 className="text-2xl font-bold text-center mb-4">Library Management</h1>
+
+      {/* Search Box */}
+      <input
+        type="text"
+        placeholder="Search by title or author..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="w-full p-2 border rounded-lg mb-4"
+      />
+
+      {/* Book List */}
+      <ul className="space-y-2">
+        {filteredBooks.length > 0 ? (
+          filteredBooks.map((book) => (
+            <li
+              key={book.id}
+              className="flex justify-between items-center p-3 bg-white rounded-xl shadow"
+            >
+              <div>
+                <p className="font-semibold">{book.title}</p>
+                <p className="text-gray-600 text-sm">{book.author}</p>
+              </div>
+              <button
+                onClick={() => removeBook(book.id)}
+                className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-lg"
+              >
+                Remove
+              </button>
+            </li>
+          ))
+        ) : (
+          <p className="text-gray-500 text-center">No books found</p>
+        )}
+      </ul>
+
+      {/* Add Book Form */}
+      <form onSubmit={addBook} className="mt-6 space-y-3">
+        <input
+          type="text"
+          placeholder="Book Title"
+          value={newTitle}
+          onChange={(e) => setNewTitle(e.target.value)}
+          className="w-full p-2 border rounded-lg"
+        />
+        <input
+          type="text"
+          placeholder="Author Name"
+          value={newAuthor}
+          onChange={(e) => setNewAuthor(e.target.value)}
+          className="w-full p-2 border rounded-lg"
+        />
+        <button
+          type="submit"
+          className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold p-2 rounded-lg"
+        >
+          Add Book
+        </button>
+      </form>
+    </div>
+  );
+};
+
+export default LibraryManagement;
