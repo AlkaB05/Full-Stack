@@ -1,0 +1,43 @@
+class Person {
+  constructor(name, age) {
+    this.name = name;
+    this.age = age;
+  }
+
+  displayInfo() {
+    console.log(`Name: ${this.name}, Age: ${this.age}`);
+  }
+}
+
+class Student extends Person {
+  constructor(name, age, course) {
+    super(name, age); // Call parent constructor
+    this.course = course;
+  }
+
+  displayInfo() {
+    super.displayInfo(); // Call base class method
+    console.log(`Course: ${this.course}`);
+  }
+}
+
+class Teacher extends Person {
+  constructor(name, age, subject) {
+    super(name, age);
+    this.subject = subject;
+  }
+
+  displayInfo() {
+    super.displayInfo();
+    console.log(`Subject: ${this.subject}`);
+  }
+}
+
+const student1 = new Student("Aarav", 20, "Computer Science");
+const teacher1 = new Teacher("Mr. Sharma", 45, "Mathematics");
+
+console.log("--- Student Details ---");
+student1.displayInfo();
+
+console.log("--- Teacher Details ---");
+teacher1.displayInfo();
