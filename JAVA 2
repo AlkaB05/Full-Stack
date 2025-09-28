@@ -1,0 +1,180 @@
+import java.io.*;
+import java.util.*;
+
+class Student implements Serializable {
+    private static final long serialVersionUID = 1L;
+    int studentID;
+    String name;
+    String grade;
+
+    public Student(int studentID, String name, String grade) {
+        this.studentID = studentID;
+        this.name = name;
+        this.grade = grade;
+    }
+
+    @Override
+    public String toString() {
+        return "StudentID: " + studentID + ", Name: " + name + ", Grade: " + grade;
+    }
+}
+
+class Employee implements Serializable {
+    private static final long serialVersionUID = 1L;
+    int id;
+    String name;
+    String designation;
+    double salary;
+
+    public Employee(int id, String name, String designation, double salary) {
+        this.id = id;
+        this.name = name;
+        this.designation = designation;
+        this.salary = salary;
+    }
+
+    @Override
+    public String toString() {
+        return "ID: " + id + ", Name: " + name +
+               ", Designation: " + designation +
+               ", Salary: " + salary;
+    }
+}
+
+public class CombinedProgram {
+    private static final String STUDENT_FILE = "student.ser";
+    private static final String EMPLOYEE_FILE = "employees.dat";
+
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        int choice;
+        do {
+            System.out.println("\n========= Main Menu =========");
+            System.out.println("1. Sum of Integers (Autoboxing/Unboxing)");
+            System.out.println("2. Student Serialization/Deserialization");
+            System.out.println("3. Employee Management System");
+            System.out.println("4. Exit");
+            System.out.print("Enter choice: ");
+            choice = sc.nextInt();
+            sc.nextLine();
+            switch (choice) {
+                case 1 -> partA(sc);
+                case 2 -> partB(sc);
+                case 3 -> partC(sc);
+                case 4 -> System.out.println("Exiting program... Goodbye!");
+                default -> System.out.println("Invalid choice. Try again!");
+            }
+        } while (choice != 4);
+        sc.close();
+    }
+
+    private static void partA(Scanner sc) {
+        System.out.println("\nEnter integers separated by space: ");
+        String input = sc.nextLine();
+        String[] tokens = input.split(" ");
+        ArrayList<Integer> numbers = new ArrayList<>();
+        for (String token : tokens) {
+            Integer num = Integer.parseInt(token);
+            numbers.add(num);
+        }
+        int sum = 0;
+        for (Integer n : numbers) {
+            sum += n;
+        }
+        System.out.println("The sum of integers = " + sum);
+    }
+
+    private static void partB(Scanner sc) {
+        System.out.print("\nEnter Student ID: ");
+        int id = sc.nextInt();
+        sc.nextLine();
+        System.out.print("Enter Student Name: ");
+        String name = sc.nextLine();
+        System.out.print("Enter Grade: ");
+        String grade = sc.nextLine();
+        Student s1 = new Student(id, name, grade);
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(STUDENT_FILE))) {
+            oos.writeObject(s1);
+            System.out.println("Student object serialized successfully!");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(STUDENT_FILE))) {
+            Student s2 = (Student) ois.readObject();
+            System.out.println("Deserialized Student: " + s2);
+        } catch (IOException | ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void partC(Scanner sc) {
+        int choice;
+        do {
+            System.out.println("\n===== Employee Management Menu =====");
+            System.out.println("1. Add Employee");
+            System.out.println("2. Display All Employees");
+            System.out.println("3. Back to Main Menu");
+            System.out.print("Enter choice: ");
+            choice = sc.nextInt();
+            sc.nextLine();
+            switch (choice) {
+                case 1 -> addEmployee(sc);
+                case 2 -> displayEmployees();
+                case 3 -> System.out.println("Returning to main menu...");
+                default -> System.out.println("Invalid choice!");
+            }
+        } while (choice != 3);
+    }
+
+    private static void addEmployee(Scanner sc) {
+        try {
+            System.out.print("Enter Employee ID: ");
+            int id = sc.nextInt();
+            sc.nextLine();
+            System.out.print("Enter Employee Name: ");
+            String name = sc.nextLine();
+            System.out.print("Enter Designation: ");
+            String designation = sc.nextLine();
+            System.out.print("Enter Salary: ");
+            double salary = sc.nextDouble();
+            Employee emp = new Employee(id, name, designation, salary);
+            List<Employee> employees = readEmployeesFromFile();
+            employees.add(emp);
+            saveEmployeesToFile(employees);
+            System.out.println("Employee added successfully!");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void displayEmployees() {
+        List<Employee> employees = readEmployeesFromFile();
+        if (employees.isEmpty()) {
+            System.out.println("No employees found.");
+        } else {
+            System.out.println("\n--- Employee Records ---");
+            for (Employee e : employees) {
+                System.out.println(e);
+            }
+        }
+    }
+
+    private static List<Employee> readEmployeesFromFile() {
+        List<Employee> employees = new ArrayList<>();
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(EMPLOYEE_FILE))) {
+            employees = (List<Employee>) ois.readObject();
+        } catch (FileNotFoundException e) {
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return employees;
+    }
+
+    private static void saveEmployeesToFile(List<Employee> employees) {
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(EMPLOYEE_FILE))) {
+            oos.writeObject(employees);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
