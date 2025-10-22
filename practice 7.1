@@ -1,0 +1,111 @@
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+
+const API = axios.create({ baseURL: 'http://localhost:5000' });
+API.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+function Login() {
+  const [form, setForm] = useState({ username: '', password: '' });
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
+  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const { data } = await API.post('/login', form);
+      localStorage.setItem('token', data.token);
+      navigate('/dashboard');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Login failed');
+    }
+  };
+  return (
+    <div style={{ padding: 30 }}>
+      <h2>Login</h2>
+      <form onSubmit={handleSubmit}>
+        <input name="username" placeholder="Username" value={form.username} onChange={handleChange} />
+        <input name="password" type="password" placeholder="Password" value={form.password} onChange={handleChange} />
+        <button type="submit">Login</button>
+      </form>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+    </div>
+  );
+}
+
+function Register() {
+  const [form, setForm] = useState({ username: '', password: '' });
+  const [msg, setMsg] = useState('');
+  const navigate = useNavigate();
+  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await API.post('/register', form);
+      setMsg('Registration successful!');
+      setTimeout(() => navigate('/login'), 1000);
+    } catch (err) {
+      setMsg(err.response?.data?.message || 'Error registering');
+    }
+  };
+  return (
+    <div style={{ padding: 30 }}>
+      <h2>Register</h2>
+      <form onSubmit={handleSubmit}>
+        <input name="username" placeholder="Username" value={form.username} onChange={handleChange} />
+        <input name="password" type="password" placeholder="Password" value={form.password} onChange={handleChange} />
+        <button type="submit">Register</button>
+      </form>
+      <p>{msg}</p>
+    </div>
+  );
+}
+
+function Dashboard() {
+  const [balance, setBalance] = useState(null);
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await API.get('/balance');
+        setBalance(data.balance);
+      } catch {
+        setError('Session expired. Please log in again.');
+        localStorage.removeItem('token');
+        navigate('/login');
+      }
+    })();
+  }, [navigate]);
+  const logout = () => {
+    localStorage.removeItem('token');
+    navigate('/login');
+  };
+  return (
+    <div style={{ padding: 30 }}>
+      <h2>Bank Dashboard</h2>
+      {balance !== null ? <p>Your Balance: ₹{balance}</p> : <p>{error}</p>}
+      <button onClick={logout}>Logout</button>
+    </div>
+  );
+}
+
+function App() {
+  const token = localStorage.getItem('token');
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={token ? <Navigate to="/dashboard" /> : <Navigate to="/login" />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/dashboard" element={token ? <Dashboard /> : <Navigate to="/login" />} />
+      </Routes>
+    </Router>
+  );
+}
+
+export default App;
