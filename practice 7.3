@@ -1,0 +1,42 @@
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const path = require('path');
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+io.on('connection', (socket) => {
+  socket.on('joinRoom', (room) => {
+    socket.join(room);
+    socket.to(room).emit('systemMessage', { message: `A user joined ${room}` });
+  });
+
+  socket.on('leaveRoom', (room) => {
+    socket.leave(room);
+    socket.to(room).emit('systemMessage', { message: `A user left ${room}` });
+  });
+
+  socket.on('chatMessage', ({ room, username, message }) => {
+    io.to(room).emit('chatMessage', { username, message, ts: Date.now() });
+  });
+
+  socket.on('typing', ({ room, username }) => {
+    socket.to(room).emit('typing', { username });
+  });
+
+  socket.on('stopTyping', ({ room, username }) => {
+    socket.to(room).emit('stopTyping', { username });
+  });
+
+  socket.on('disconnecting', () => {
+    const rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
+    rooms.forEach(room => socket.to(room).emit('systemMessage', { message: `A user is disconnecting from ${room}` }));
+  });
+});
+
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
