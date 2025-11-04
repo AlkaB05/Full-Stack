@@ -1,0 +1,299 @@
+// app.js - Single-file Todo app (frontend + backend)
+// Run: npm init -y
+//      npm install express mongoose
+// Optional: export MONGODB_URI="mongodb://user:pass@host:port/dbname"
+// Then: node app.js
+
+const express = require('express');
+const mongoose = require('mongoose');
+const path = require('path');
+
+const app = express();
+app.use(express.json());
+
+// ---- Data layer: try MongoDB (mongoose). If no MONGODB_URI, use in-memory fallback. ----
+const mongoUri = process.env.MONGODB_URI || '';
+
+let TodoModel = null;
+let useMongo = false;
+const inMemoryTodos = [];
+let nextId = 1;
+
+async function initDB() {
+  if (!mongoUri) {
+    console.log('MONGODB_URI not set — using in-memory store (data lost on restart).');
+    return;
+  }
+  try {
+    await mongoose.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true });
+    const todoSchema = new mongoose.Schema({
+      text: { type: String, required: true },
+      completed: { type: Boolean, default: false },
+      createdAt: { type: Date, default: Date.now },
+    });
+    TodoModel = mongoose.model('Todo', todoSchema);
+    useMongo = true;
+    console.log('Connected to MongoDB.');
+  } catch (err) {
+    console.error('MongoDB connection failed — falling back to in-memory store.', err.message);
+  }
+}
+initDB();
+
+// ---- API routes ----
+// Get all todos
+app.get('/api/todos', async (req, res) => {
+  try {
+    if (useMongo) {
+      const docs = await TodoModel.find().sort({ createdAt: -1 }).exec();
+      return res.json(docs.map(d => ({ id: d._id, text: d.text, completed: d.completed })));
+    } else {
+      return res.json(inMemoryTodos.slice().reverse());
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch todos' });
+  }
+});
+
+// Create todo
+app.post('/api/todos', async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text || !text.trim()) return res.status(400).json({ error: 'text required' });
+
+    if (useMongo) {
+      const doc = await TodoModel.create({ text: text.trim() });
+      return res.status(201).json({ id: doc._id, text: doc.text, completed: doc.completed });
+    } else {
+      const todo = { id: String(nextId++), text: text.trim(), completed: false, createdAt: new Date() };
+      inMemoryTodos.push(todo);
+      return res.status(201).json(todo);
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create todo' });
+  }
+});
+
+// Update (toggle or edit)
+app.put('/api/todos/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { text, completed } = req.body; // either or both
+
+    if (useMongo) {
+      const update = {};
+      if (typeof text === 'string') update.text = text.trim();
+      if (typeof completed === 'boolean') update.completed = completed;
+      const doc = await TodoModel.findByIdAndUpdate(id, update, { new: true }).exec();
+      if (!doc) return res.status(404).json({ error: 'Not found' });
+      return res.json({ id: doc._id, text: doc.text, completed: doc.completed });
+    } else {
+      const idx = inMemoryTodos.findIndex(t => t.id === id);
+      if (idx === -1) return res.status(404).json({ error: 'Not found' });
+      if (typeof text === 'string') inMemoryTodos[idx].text = text.trim();
+      if (typeof completed === 'boolean') inMemoryTodos[idx].completed = completed;
+      return res.json(inMemoryTodos[idx]);
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update todo' });
+  }
+});
+
+// Delete
+app.delete('/api/todos/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (useMongo) {
+      const doc = await TodoModel.findByIdAndDelete(id).exec();
+      if (!doc) return res.status(404).json({ error: 'Not found' });
+      return res.json({ success: true });
+    } else {
+      const idx = inMemoryTodos.findIndex(t => t.id === id);
+      if (idx === -1) return res.status(404).json({ error: 'Not found' });
+      inMemoryTodos.splice(idx, 1);
+      return res.json({ success: true });
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete todo' });
+  }
+});
+
+// ---- Serve single-file frontend (React via CDN + Babel) ----
+const indexHtml = `
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Single-file Todo App</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background:#f6f8fa; margin:0; padding:20px; }
+    .container { max-width:700px; margin:0 auto; background:white; padding:20px; border-radius:10px; box-shadow:0 6px 18px rgba(0,0,0,0.06); }
+    h1 { margin:0 0 10px 0; font-size:24px; text-align:center; }
+    form { display:flex; gap:8px; margin-bottom:12px; }
+    input[type="text"] { flex:1; padding:10px; border-radius:8px; border:1px solid #ddd; font-size:14px; }
+    button { padding:10px 14px; border-radius:8px; border:none; cursor:pointer; }
+    .btn-primary { background:#2563eb; color:white; }
+    .list { list-style:none; padding:0; margin:0; }
+    .item { display:flex; align-items:center; gap:10px; padding:10px; border-bottom:1px solid #f0f0f0; }
+    .item .text { flex:1; word-break:break-word; }
+    .item.completed .text { text-decoration:line-through; color:#6b7280; }
+    .small { font-size:12px; color:#6b7280; }
+    .actions button { margin-left:6px; padding:6px 8px; border-radius:6px; border:1px solid #ddd; background:white; cursor:pointer; }
+    .no-todos { text-align:center; color:#6b7280; padding:20px 0; }
+    .edit-input { padding:8px; border-radius:6px; border:1px solid #ddd; width:100%; }
+  </style>
+</head>
+<body>
+  <div id="root" class="container"></div>
+
+  <!-- React + Babel CDNs -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    function App() {
+      const [todos, setTodos] = useState([]);
+      const [text, setText] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [editingId, setEditingId] = useState(null);
+      const [editText, setEditText] = useState('');
+
+      useEffect(() => { fetchTodos(); }, []);
+
+      async function fetchTodos() {
+        setLoading(true);
+        try {
+          const res = await fetch('/api/todos');
+          const data = await res.json();
+          setTodos(data);
+        } catch (err) {
+          console.error('Fetch failed', err);
+        } finally { setLoading(false); }
+      }
+
+      async function addTodo(e) {
+        e && e.preventDefault();
+        if (!text.trim()) return;
+        const res = await fetch('/api/todos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text })
+        });
+        if (res.ok) {
+          const newTodo = await res.json();
+          setTodos(prev => [newTodo, ...prev]);
+          setText('');
+        } else {
+          alert('Failed to add');
+        }
+      }
+
+      async function toggleCompleted(id, current) {
+        const res = await fetch('/api/todos/' + id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ completed: !current })
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          setTodos(prev => prev.map(t => t.id === updated.id ? updated : t));
+        }
+      }
+
+      function startEdit(t) {
+        setEditingId(t.id);
+        setEditText(t.text);
+      }
+
+      async function saveEdit(id) {
+        if (!editText.trim()) return;
+        const res = await fetch('/api/todos/' + id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: editText })
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          setTodos(prev => prev.map(t => t.id === updated.id ? updated : t));
+          setEditingId(null);
+          setEditText('');
+        }
+      }
+
+      async function del(id) {
+        if (!confirm('Delete this todo?')) return;
+        const res = await fetch('/api/todos/' + id, { method: 'DELETE' });
+        if (res.ok) {
+          setTodos(prev => prev.filter(t => t.id !== id));
+        } else {
+          alert('Delete failed');
+        }
+      }
+
+      return (
+        <div>
+          <h1>Todo App — Single File</h1>
+
+          <form onSubmit={addTodo}>
+            <input value={text} onChange={e => setText(e.target.value)} placeholder="Add new todo..." />
+            <button type="submit" className="btn-primary">Add</button>
+          </form>
+
+          {loading ? <div className="small">Loading...</div> : (
+            todos.length === 0 ? <div className="no-todos">No todos — add one!</div> :
+            <ul className="list">
+              {todos.map(t => (
+                <li key={t.id} className={\`item \${t.completed ? 'completed' : ''}\`}>
+                  <input type="checkbox" checked={t.completed} onChange={() => toggleCompleted(t.id, t.completed)} />
+                  <div className="text">
+                    { editingId === t.id ? (
+                      <input className="edit-input" value={editText} onChange={e => setEditText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveEdit(t.id); if (e.key === 'Escape') { setEditingId(null); setEditText(''); } }} />
+                    ) : (
+                      <div>{t.text}</div>
+                    )}
+                    <div className="small">id: {t.id}</div>
+                  </div>
+
+                  <div className="actions">
+                    { editingId === t.id ? (
+                      <>
+                        <button onClick={() => saveEdit(t.id)}>Save</button>
+                        <button onClick={() => { setEditingId(null); setEditText(''); }}>Cancel</button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => startEdit(t)}>Edit</button>
+                        <button onClick={() => del(t.id)}>Delete</button>
+                      </>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
+`;
+
+// Serve the HTML
+app.get('/', (req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(indexHtml);
+});
+
+// Start server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(\`Server running at http://localhost:\${PORT} — port \${PORT}\`);
+  if (!mongoUri) console.log('Tip: set MONGODB_URI if you want persistent storage.');
+});
