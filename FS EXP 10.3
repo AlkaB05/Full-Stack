@@ -1,0 +1,278 @@
+/**
+ * app.js — Single-file Social Media App
+ * Features: Register/Login (JWT), Create/Edit/Delete Posts, Like, Comment
+ * Frontend + Backend combined
+ * Deployable to AWS EC2 or Elastic Beanstalk
+ */
+
+const express = require("express");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const multer = require("multer");
+const mongoose = require("mongoose");
+const { v4: uuidv4 } = require("uuid");
+const path = require("path");
+const fs = require("fs");
+
+const app = express();
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Serve uploads & static
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// ---- DATABASE SETUP ----
+const mongoUri = process.env.MONGODB_URI || "";
+let User, Post;
+async function initDB() {
+  try {
+    if (!mongoUri) throw new Error("No MONGO URI — using in-memory fallback");
+
+    await mongoose.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true });
+    const userSchema = new mongoose.Schema({
+      username: String,
+      password: String,
+    });
+    const commentSchema = new mongoose.Schema({
+      user: String,
+      text: String,
+      createdAt: { type: Date, default: Date.now },
+    });
+    const postSchema = new mongoose.Schema({
+      user: String,
+      text: String,
+      image: String,
+      likes: [String],
+      comments: [commentSchema],
+      createdAt: { type: Date, default: Date.now },
+    });
+
+    User = mongoose.model("User", userSchema);
+    Post = mongoose.model("Post", postSchema);
+    console.log("✅ Connected to MongoDB");
+  } catch (err) {
+    console.log("⚠️ MongoDB unavailable, using in-memory fallback.");
+    const users = [];
+    const posts = [];
+    User = {
+      async findOne(q) {
+        return users.find((u) => u.username === q.username);
+      },
+      async create(obj) {
+        users.push(obj);
+        return obj;
+      },
+    };
+    Post = {
+      async find() { return posts; },
+      async create(obj) { posts.push(obj); return obj; },
+      async findById(id) { return posts.find((p) => p._id === id); },
+      async deleteOne(q) { const i = posts.findIndex((p) => p._id === q._id); if (i >= 0) posts.splice(i, 1); },
+    };
+  }
+}
+initDB();
+
+// ---- JWT AUTH ----
+const SECRET = "secret123";
+function auth(req, res, next) {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ error: "No token" });
+  try {
+    req.user = jwt.verify(token, SECRET);
+    next();
+  } catch {
+    res.status(401).json({ error: "Invalid token" });
+  }
+}
+
+// ---- IMAGE UPLOAD ----
+const storage = multer.diskStorage({
+  destination: "uploads/",
+  filename: (_, file, cb) => cb(null, uuidv4() + path.extname(file.originalname)),
+});
+const upload = multer({ storage });
+
+// ---- AUTH ROUTES ----
+app.post("/api/register", async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: "Missing data" });
+  const existing = await User.findOne({ username });
+  if (existing) return res.status(400).json({ error: "User exists" });
+
+  const hashed = await bcrypt.hash(password, 10);
+  await User.create({ username, password: hashed });
+  res.json({ success: true });
+});
+
+app.post("/api/login", async (req, res) => {
+  const { username, password } = req.body;
+  const user = await User.findOne({ username });
+  if (!user || !(await bcrypt.compare(password, user.password)))
+    return res.status(401).json({ error: "Invalid credentials" });
+  const token = jwt.sign({ username }, SECRET, { expiresIn: "1d" });
+  res.json({ token });
+});
+
+// ---- POST ROUTES ----
+app.get("/api/posts", async (_, res) => {
+  const posts = await Post.find();
+  res.json(posts.reverse());
+});
+
+app.post("/api/posts", auth, upload.single("image"), async (req, res) => {
+  const post = await Post.create({
+    _id: uuidv4(),
+    user: req.user.username,
+    text: req.body.text,
+    image: req.file ? "/uploads/" + req.file.filename : "",
+    likes: [],
+    comments: [],
+  });
+  res.json(post);
+});
+
+app.put("/api/posts/:id", auth, async (req, res) => {
+  const post = await Post.findById(req.params.id);
+  if (!post) return res.status(404).json({ error: "Not found" });
+  if (post.user !== req.user.username) return res.status(403).json({ error: "Forbidden" });
+  post.text = req.body.text || post.text;
+  res.json(post);
+});
+
+app.delete("/api/posts/:id", auth, async (req, res) => {
+  const post = await Post.findById(req.params.id);
+  if (!post) return res.status(404).json({ error: "Not found" });
+  if (post.user !== req.user.username) return res.status(403).json({ error: "Forbidden" });
+  await Post.deleteOne({ _id: post._id });
+  res.json({ success: true });
+});
+
+app.post("/api/posts/:id/like", auth, async (req, res) => {
+  const post = await Post.findById(req.params.id);
+  if (!post) return res.status(404).json({ error: "Not found" });
+  const user = req.user.username;
+  if (post.likes.includes(user))
+    post.likes = post.likes.filter((u) => u !== user);
+  else post.likes.push(user);
+  res.json(post);
+});
+
+app.post("/api/posts/:id/comment", auth, async (req, res) => {
+  const post = await Post.findById(req.params.id);
+  if (!post) return res.status(404).json({ error: "Not found" });
+  post.comments.push({ user: req.user.username, text: req.body.text });
+  res.json(post);
+});
+
+// ---- FRONTEND ----
+app.get("/", (_, res) => {
+  res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Social Media Mini App</title>
+<style>
+body { font-family:Arial; background:#f0f2f5; padding:20px; }
+.container { max-width:700px; margin:auto; background:white; padding:20px; border-radius:10px; }
+input,textarea { width:100%; padding:8px; margin:5px 0; border-radius:5px; border:1px solid #ccc; }
+button { padding:8px 12px; margin-top:5px; border:none; border-radius:5px; background:#2563eb; color:white; cursor:pointer; }
+.post { border:1px solid #ddd; padding:10px; margin-top:10px; border-radius:5px; }
+img { max-width:100%; border-radius:5px; }
+.comment { font-size:14px; background:#f8f8f8; margin-top:5px; padding:5px; border-radius:5px; }
+</style>
+</head>
+<body>
+<div class="container">
+<h2>Mini Social Media</h2>
+<div id="auth"></div>
+<div id="postSection" style="display:none;">
+  <form id="postForm" enctype="multipart/form-data">
+    <textarea name="text" placeholder="Write a post..."></textarea>
+    <input type="file" name="image" />
+    <button type="submit">Post</button>
+  </form>
+  <div id="feed"></div>
+</div>
+</div>
+
+<script>
+let token = localStorage.getItem('token');
+const authDiv = document.getElementById('auth');
+const postSection = document.getElementById('postSection');
+
+function renderAuth() {
+  if (token) {
+    authDiv.innerHTML = '<button onclick="logout()">Logout</button>';
+    postSection.style.display = 'block';
+    loadPosts();
+  } else {
+    authDiv.innerHTML = \`
+      <input id="user" placeholder="username" />
+      <input id="pass" type="password" placeholder="password" />
+      <button onclick="login()">Login</button>
+      <button onclick="register()">Register</button>\`;
+  }
+}
+
+async function register() {
+  const username = user.value, password = pass.value;
+  const res = await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+  if(res.ok) alert('Registered!'); else alert('Error');
+}
+
+async function login() {
+  const username = user.value, password = pass.value;
+  const res = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+  const data = await res.json();
+  if(data.token){ localStorage.setItem('token',data.token); token=data.token; renderAuth(); }
+  else alert('Invalid');
+}
+
+function logout(){ localStorage.removeItem('token'); token=null; renderAuth(); }
+
+async function loadPosts(){
+  const res=await fetch('/api/posts');
+  const posts=await res.json();
+  feed.innerHTML=posts.map(p=>\`
+  <div class="post">
+    <b>@\${p.user}</b> <small>\${new Date(p.createdAt).toLocaleString()}</small>
+    <p>\${p.text}</p>
+    \${p.image ? '<img src="'+p.image+'" />' : ''}
+    <button onclick="likePost('\${p._id}')">❤️ \${p.likes.length}</button>
+    <div>\${p.comments.map(c=>'<div class="comment"><b>@'+c.user+':</b> '+c.text+'</div>').join('')}</div>
+    <input id="c\${p._id}" placeholder="comment..." />
+    <button onclick="commentPost('\${p._id}')">💬</button>
+  </div>\`).join('');
+}
+
+async function likePost(id){
+  await fetch('/api/posts/'+id+'/like',{method:'POST',headers:{Authorization:'Bearer '+token}});
+  loadPosts();
+}
+
+async function commentPost(id){
+  const text=document.getElementById('c'+id).value;
+  await fetch('/api/posts/'+id+'/comment',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({text})});
+  loadPosts();
+}
+
+postForm.onsubmit=async e=>{
+  e.preventDefault();
+  const formData=new FormData(postForm);
+  const res=await fetch('/api/posts',{method:'POST',headers:{Authorization:'Bearer '+token},body:formData});
+  if(res.ok) loadPosts();
+};
+renderAuth();
+</script>
+</body>
+</html>
+`);
+});
+
+// ---- START SERVER ----
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () =>
+  console.log(`🚀 Server running on http://localhost:${PORT}`)
+);
